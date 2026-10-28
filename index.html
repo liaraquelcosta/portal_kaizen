@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portal — Aplicações</title>
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+
+<header>
+  <h1>Portal de Aplicações</h1>
+  <p>Acesso rápido a todas as aplicações em gestão</p>
+</header>
+
+<main id="main"></main>
+
+<footer>Portal interno — não substitui o acesso/login de cada aplicação.</footer>
+
+<script src="config.js?v=1"></script>
+<script>
+  const main = document.getElementById('main');
+
+  window.PORTAL_CONFIG.grupos.forEach(grupo => {
+    const secao = document.createElement('section');
+    secao.className = 'grupo';
+
+    const titulo = document.createElement('h2');
+    titulo.textContent = grupo.cliente;
+    secao.appendChild(titulo);
+
+    const cartoes = document.createElement('div');
+    cartoes.className = 'cartoes';
+
+    grupo.apps.forEach(app => {
+      const link = document.createElement('a');
+      link.className = 'cartao';
+      link.href = app.url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.innerHTML = `
+        <span class="icone">${app.icone || '🔗'}</span>
+        <h3>${app.nome}</h3>
+        <p>${app.descricao || ''}</p>
+      `;
+      cartoes.appendChild(link);
+    });
+
+    secao.appendChild(cartoes);
+    main.appendChild(secao);
+  });
+</script>
+
+</body>
+</html>

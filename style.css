@@ -1,0 +1,105 @@
+:root {
+  --azul-kaizen: #103273;
+  --azul-kaizen-claro: #1c4ba0;
+  --fundo: #f4f6fb;
+  --cartao: #ffffff;
+  --texto: #1a1f2b;
+  --texto-suave: #5b6472;
+  --borda: #e3e7ef;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: var(--fundo);
+  color: var(--texto);
+}
+
+header {
+  background: var(--azul-kaizen);
+  color: #fff;
+  padding: 28px 24px;
+  text-align: center;
+}
+
+header h1 {
+  margin: 0 0 4px 0;
+  font-size: 1.6rem;
+}
+
+header p {
+  margin: 0;
+  opacity: 0.85;
+  font-size: 0.95rem;
+}
+
+main {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 32px 20px 60px;
+}
+
+.grupo {
+  margin-bottom: 36px;
+}
+
+.grupo h2 {
+  font-size: 1.05rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--texto-suave);
+  border-bottom: 1px solid var(--borda);
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+}
+
+.cartoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.cartao {
+  background: var(--cartao);
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  padding: 20px;
+  text-decoration: none;
+  color: var(--texto);
+  display: block;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.cartao:hover {
+  box-shadow: 0 6px 18px rgba(16, 50, 115, 0.12);
+  transform: translateY(-2px);
+  border-color: var(--azul-kaizen-claro);
+}
+
+.cartao .icone {
+  font-size: 1.8rem;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.cartao h3 {
+  margin: 0 0 6px 0;
+  font-size: 1.05rem;
+  color: var(--azul-kaizen);
+}
+
+.cartao p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--texto-suave);
+  line-height: 1.4;
+}
+
+footer {
+  text-align: center;
+  color: var(--texto-suave);
+  font-size: 0.8rem;
+  padding: 20px;
+}
