@@ -25,17 +25,6 @@ window.PORTAL_CONFIG = {
           icone: "📅"
         }
       ]
-    },
-    {
-      cliente: "Fibope",
-      apps: [
-        {
-          nome: "Plano Diário",
-          descricao: "Plano de produção diário — Transformação e Extrusão",
-          url: "https://plano-diario-fibope.netlify.app",
-          icone: "📋"
-        }
-      ]
     }
   ]
 };
