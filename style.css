@@ -78,12 +78,6 @@ main {
   border-color: var(--azul-kaizen-claro);
 }
 
-.cartao .icone {
-  font-size: 1.8rem;
-  margin-bottom: 8px;
-  display: block;
-}
-
 .cartao h3 {
   margin: 0 0 6px 0;
   font-size: 1.05rem;
