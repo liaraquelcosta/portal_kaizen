@@ -1,0 +1,15 @@
+{
+  "name": "gantt-producao",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gantt de producao (Tinturaria de Fio e Tingimento) a partir da programacao de lotes do Orgatex",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^4.19.2",
+    "mssql": "^11.0.2"
+  }
+}

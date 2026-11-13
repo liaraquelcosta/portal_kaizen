@@ -21,7 +21,7 @@ window.PORTAL_CONFIG = {
         {
           nome: "Gantt",
           descricao: "Programação de lotes em tempo real — Tinturaria de Fio e Tingimento",
-          url: "http://128.0.0.82:3000/gantt.html",
+          url: "http://128.0.0.82:5051",
           icone: "📊"
         },
         {
