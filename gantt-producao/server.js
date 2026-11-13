@@ -16,7 +16,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const PASTA_DADOS = path.join(__dirname, 'data');
 const CACHE = path.join(PASTA_DADOS, 'gantt-orgatex.json');
 // sobe quando o formato do cache muda: força uma leitura imediata ao arrancar
-const VERSAO_DADOS = 4;
+const VERSAO_DADOS = 6;
 const INTERVALO_MIN = Number(process.env.ORGATEX_GANTT_INTERVALO_MIN || 3);
 
 fs.mkdirSync(PASTA_DADOS, { recursive: true });
@@ -138,9 +138,12 @@ async function ler(desde, ate) {
       .input('desde', sql.DateTime, desde)
       .input('ate', sql.DateTime, ate)
       .query(`
-        SELECT Machine, Dyelot, DyelotRefNo, StartTime, EndTime, Article, ColourDescript, Customer
+        SELECT Machine, Dyelot, DyelotRefNo, StartTime, EndTime, Article, ColourDescript, Customer,
+               State, SetTime, QueueTime
         FROM Dyelots WITH (NOLOCK)
-        WHERE EndTime >= @desde AND StartTime <= @ate
+        WHERE (EndTime >= @desde OR EndTime IS NULL)
+          AND (StartTime <= @ate OR StartTime IS NULL)
+          AND (StartTime IS NOT NULL OR QueueTime >= @desde)
         ORDER BY Machine, StartTime
       `);
     return { maquinas: maquinasR.recordset, lotes: lotesR.recordset };
@@ -151,7 +154,11 @@ async function ler(desde, ate) {
 
 // Máquinas que existem na base do Orgatex mas não devem aparecer no Gantt (não existem fisicamente
 // ou não interessam a este setor) — pedido da Lia.
-const MAQUINAS_EXCLUIDAS = new Set(['JIG4', 'MQ99', 'RAM3', 'JET1']);
+const MAQUINAS_EXCLUIDAS = new Set(['JIG4', 'MQ99', 'MQ00', 'MQ10', 'MQ11', 'RAM3', 'JET1']);
+
+// Duração prevista por omissão (segundos), só usada quando o lote não tem SetTime nem nenhum outro lote
+// recente da mesma máquina para estimar — 6h é um valor típico de um tingimento.
+const DURACAO_OMISSAO_S = 6 * 3600;
 
 function montar({ maquinas, lotes }, agora) {
   // todas as máquinas da base (mesmo sem lote agendado agora) + qualquer uma que apareça nos lotes e não esteja lá
@@ -160,30 +167,93 @@ function montar({ maquinas, lotes }, agora) {
   for (const m of MAQUINAS_EXCLUIDAS) nomes.delete(m);
   const listaMaquinas = [...nomes].sort((a, b) => ordemMaquina(a) - ordemMaquina(b) || a.localeCompare(b));
 
-  const listaLotes = lotes
-    .filter((l) => l.StartTime && l.EndTime && !MAQUINAS_EXCLUIDAS.has((l.Machine || '').trim()))
-    .map((l) => {
-      const chave = (l.Dyelot || l.DyelotRefNo || '').trim();
-      const inicio = new Date(l.StartTime).toISOString();
-      const fim = new Date(l.EndTime).toISOString();
-      const corDescricao = (l.ColourDescript || '').trim() || null;
-      const corBarra = corDoLote(corDescricao, chave);
-      let estadoLote = 'agendado';
-      if (new Date(fim) < agora) estadoLote = 'concluido';
-      else if (new Date(inicio) <= agora) estadoLote = 'a_decorrer';
-      return {
-        maquina: (l.Machine || '').trim(),
-        lote: chave,
-        inicio,
-        fim,
-        artigo: (l.Article || '').trim() || null,
-        cor: corDescricao,
-        cliente: (l.Customer || '').trim() || null,
-        estado: estadoLote,
-        corBarra,
-        corTexto: corDoTexto(corBarra),
-      };
+  const validos = lotes.filter((l) => !MAQUINAS_EXCLUIDAS.has((l.Machine || '').trim()));
+
+  // Duração média conhecida (SetTime, em segundos) por máquina, para estimar quando um lote não tem SetTime.
+  const duracoesPorMaquina = new Map();
+  for (const l of validos) {
+    if (!l.SetTime || l.SetTime <= 0) continue;
+    const m = (l.Machine || '').trim();
+    if (!duracoesPorMaquina.has(m)) duracoesPorMaquina.set(m, []);
+    duracoesPorMaquina.get(m).push(l.SetTime);
+  }
+  function duracaoEstimadaS(maquina, setTime) {
+    if (setTime && setTime > 0) return setTime;
+    const lista = duracoesPorMaquina.get(maquina);
+    if (lista && lista.length) return lista.reduce((a, b) => a + b, 0) / lista.length;
+    return DURACAO_OMISSAO_S;
+  }
+
+  // 1) lotes com hora real de início (terminados ou a decorrer); ficam já prontos.
+  // 2) lotes sem hora de início (na fila, ainda nao arrancaram): por máquina, encadeiam-se uns a seguir
+  //    aos outros (pela ordem em que entraram na fila — QueueTime), a partir do fim do último lote
+  //    (real ou estimado) dessa máquina.
+  const prontos = [];
+  const emFilaPorMaquina = new Map();
+  for (const l of validos) {
+    const maquina = (l.Machine || '').trim();
+    if (l.StartTime) {
+      prontos.push(l);
+    } else {
+      if (!emFilaPorMaquina.has(maquina)) emFilaPorMaquina.set(maquina, []);
+      emFilaPorMaquina.get(maquina).push(l);
+    }
+  }
+
+  const fimConhecidoPorMaquina = new Map(); // último fim (real ou estimado) de cada máquina, para encadear a fila
+  const listaLotes = [];
+
+  function adicionar(l, inicioMs, fimMs, estimadoInicio, estimadoFim) {
+    const maquina = (l.Machine || '').trim();
+    const chave = (l.Dyelot || l.DyelotRefNo || '').trim();
+    const inicio = new Date(inicioMs).toISOString();
+    const fim = new Date(fimMs).toISOString();
+    const corDescricao = (l.ColourDescript || '').trim() || null;
+    const corBarra = corDoLote(corDescricao, chave);
+    let estadoLote = 'agendado';
+    if (!estimadoFim && fimMs < agora.getTime()) estadoLote = 'concluido';
+    else if (inicioMs <= agora.getTime()) estadoLote = 'a_decorrer';
+    listaLotes.push({
+      maquina,
+      lote: chave,
+      inicio,
+      fim,
+      artigo: (l.Article || '').trim() || null,
+      cor: corDescricao,
+      cliente: (l.Customer || '').trim() || null,
+      estado: estadoLote,
+      corBarra,
+      corTexto: corDoTexto(corBarra),
+      estimado: !!(estimadoInicio || estimadoFim),
     });
+    const atual = fimConhecidoPorMaquina.get(maquina);
+    if (!atual || fimMs > atual) fimConhecidoPorMaquina.set(maquina, fimMs);
+  }
+
+  for (const l of prontos) {
+    const maquina = (l.Machine || '').trim();
+    const inicioMs = new Date(l.StartTime).getTime();
+    let fimMs, estimadoFim = false;
+    if (l.EndTime) {
+      fimMs = new Date(l.EndTime).getTime();
+    } else {
+      // State 30 (a decorrer): ainda não tem hora de fim no Orgatex — estima-se pela duração prevista.
+      fimMs = inicioMs + duracaoEstimadaS(maquina, l.SetTime) * 1000;
+      estimadoFim = true;
+    }
+    adicionar(l, inicioMs, fimMs, false, estimadoFim);
+  }
+
+  for (const [maquina, lista] of emFilaPorMaquina) {
+    lista.sort((a, b) => (a.QueueTime || '').localeCompare(b.QueueTime || '') || String(a.Dyelot).localeCompare(String(b.Dyelot)));
+    let cursor = Math.max(agora.getTime(), fimConhecidoPorMaquina.get(maquina) || agora.getTime());
+    for (const l of lista) {
+      const duracaoMs = duracaoEstimadaS(maquina, l.SetTime) * 1000;
+      adicionar(l, cursor, cursor + duracaoMs, true, true);
+      cursor += duracaoMs;
+    }
+  }
+
   return { atualizado: agora.toISOString(), versao: VERSAO_DADOS, maquinas: listaMaquinas, lotes: listaLotes };
 }
 
@@ -257,7 +327,11 @@ app.post('/api/gantt-orgatex/atualizar', async (req, res) => {
   }
 });
 
-iniciarAgendamento();
-app.listen(PORT, HOST, () => {
-  console.log(`gantt-producao a correr em http://${HOST}:${PORT}`);
-});
+if (require.main === module) {
+  iniciarAgendamento();
+  app.listen(PORT, HOST, () => {
+    console.log(`gantt-producao a correr em http://${HOST}:${PORT}`);
+  });
+}
+
+module.exports = { montar, atualizar, configurado };

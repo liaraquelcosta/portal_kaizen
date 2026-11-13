@@ -54,6 +54,7 @@ main{padding:14px 16px 32px;display:grid;gap:12px}
 .barra.concluido{opacity:.5}
 .barra.a_decorrer{box-shadow:0 0 0 2px #ffb300,0 1px 3px rgba(0,0,0,.25);font-weight:700}
 .barra.agendado{opacity:.92}
+.barra.estimado{border-style:dashed;border-width:2px}
 .sem-dados{padding:10px;color:var(--cinza);font-size:.88rem}
 .foot{font-size:.8rem;color:var(--cinza);max-width:120ch;margin:0}
 </style>
@@ -65,6 +66,7 @@ main{padding:14px 16px 32px;display:grid;gap:12px}
   <div class="direita">
     <span class="stamp" id="stamp"></span>
     <button id="refresh" type="button" title="Lê já o Orgatex">Atualizar agora</button>
+    <a id="linkPortal" href="#" title="Voltar ao Portal de Aplicações">&larr; Portal</a>
   </div>
 </header>
 
@@ -78,6 +80,7 @@ main{padding:14px 16px 32px;display:grid;gap:12px}
       <span class="am dec"><i></i> A decorrer agora</span>
       <span class="am"><i></i> Agendado</span>
       <span class="am conc"><i></i> Concluído</span>
+      <span class="am"><i style="border:2px dashed #555;background:none"></i> ≈ sem hora real (estimado)</span>
       <span>Cor da barra ≈ cor do tingimento (aproximada, a partir da descrição no Orgatex).</span>
     </div>
   </div>
@@ -90,6 +93,8 @@ main{padding:14px 16px 32px;display:grid;gap:12px}
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+document.getElementById('linkPortal').href = location.protocol + '//' + location.hostname + ':5050';
 
 const ZOOMS = [
   ['semana', 'Semana', 7],
@@ -201,16 +206,17 @@ function construirLinhas(desde, ate, largura) {
       const x1 = Math.min(largura, xDe(fim, desde));
       if (x1 <= 0 || x0 >= largura) continue;
       const bar = document.createElement('div');
-      bar.className = 'barra ' + l.estado;
+      bar.className = 'barra ' + l.estado + (l.estimado ? ' estimado' : '');
       bar.style.left = x0 + 'px';
       bar.style.width = Math.max(3, x1 - x0) + 'px';
       bar.style.background = l.corBarra;
       bar.style.color = l.corTexto || '#fff';
       const prefixo = l.estado === 'concluido' ? '✓ ' : l.estado === 'a_decorrer' ? '▶ ' : '';
-      bar.textContent = prefixo + l.lote;
-      bar.title = `${l.lote}\nMáquina: ${maquina}\nInício: ${dh(l.inicio)}\nFim previsto: ${dh(l.fim)}` +
+      bar.textContent = prefixo + (l.estimado ? '≈ ' : '') + l.lote;
+      bar.title = `${l.lote}\nMáquina: ${maquina}\nInício: ${dh(l.inicio)}${l.estimado ? ' (estimado)' : ''}\nFim previsto: ${dh(l.fim)}${l.estimado ? ' (estimado)' : ''}` +
         (l.artigo ? `\nArtigo: ${l.artigo}` : '') + (l.cor ? `\nCor: ${l.cor}` : '') + (l.cliente ? `\nCliente: ${l.cliente}` : '') +
-        `\nEstado: ${l.estado === 'concluido' ? 'concluído' : l.estado === 'a_decorrer' ? 'a decorrer agora' : 'agendado'}`;
+        `\nEstado: ${l.estado === 'concluido' ? 'concluído' : l.estado === 'a_decorrer' ? 'a decorrer agora' : 'agendado'}` +
+        (l.estimado ? '\n(este lote ainda não tem hora real no Orgatex — a duração é uma estimativa)' : '');
       tl.appendChild(bar);
     }
     const linhaAgora = document.createElement('div');
@@ -275,7 +281,7 @@ async function carregar() {
     D = j;
     $('stamp').innerHTML = `Atualizado <b>${esc(D.atualizado.replace('T', ' ').slice(0, 16))}</b>`;
     const intervalo = (D.ligacao && D.ligacao.intervaloMin) || 3;
-    $('nota').textContent = `Dados da programação de lotes do Orgatex (tabela "Dyelots"), só leitura. Mostra todas as máquinas e jigas — não separa Tinturaria de Fio de Tingimento, porque a base de dados não guarda esse setor por máquina. Atualiza-se sozinho de ${intervalo} em ${intervalo} minutos.`;
+    $('nota').textContent = `Dados da programação de lotes do Orgatex (tabela "Dyelots"), só leitura. Mostra todas as máquinas e jigas — não separa Tinturaria de Fio de Tingimento, porque a base de dados não guarda esse setor por máquina. Os lotes marcados com "≈" ainda não têm hora real no Orgatex (a decorrer sem hora de fim, ou na fila sem hora de início) — a duração é uma estimativa pela duração prevista do tingimento. Atualiza-se sozinho de ${intervalo} em ${intervalo} minutos.`;
     montarZoom();
     render();
     irParaAgora();
