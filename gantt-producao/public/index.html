@@ -46,11 +46,15 @@ main{padding:14px 16px 32px;display:grid;gap:12px}
 .rotulo-hora{top:var(--altura-dia);height:var(--altura-hora);font-weight:400;font-size:.72rem;color:var(--cinza);border-left:1px solid var(--borda)}
 .rotulo-hora.agora-col{color:var(--vermelho);font-weight:700}
 
+.gantt-conteudo{position:relative}
 .glinhas{position:relative}
 .grow{border-bottom:1px solid var(--borda)}
-.gtimeline{position:relative;height:var(--altura-linha)}
-.marca{position:absolute;top:0;bottom:0;border-left:1px solid var(--grid)}
-.marca.dia{border-left:1px solid #d7dcea}
+.gtimeline{position:relative;height:var(--altura-linha);
+  background-image:
+    repeating-linear-gradient(to right, var(--grid) 0, var(--grid) 1px, transparent 1px, transparent var(--px-hora)),
+    repeating-linear-gradient(to right, #d7dcea 0, #d7dcea 1px, transparent 1px, transparent var(--px-dia));
+  background-position: var(--offset-dia) 0, var(--offset-dia) 0;
+}
 .linha-agora{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--vermelho);z-index:6;pointer-events:none}
 .barra{position:absolute;top:3px;height:calc(var(--altura-linha) - 6px);border-radius:5px;border:1px solid rgba(0,0,0,.12);font-size:.74rem;line-height:calc(var(--altura-linha) - 6px);padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default;box-sizing:border-box}
 .barra.concluido{opacity:.5}
@@ -159,20 +163,6 @@ function construirCabecalho(desde, ate, largura) {
   return head;
 }
 
-function construirGrelha(desde, ate) {
-  const frag = document.createDocumentFragment();
-  let cursor = new Date(desde);
-  cursor.setMinutes(0, 0, 0);
-  while (cursor < ate) {
-    const marca = document.createElement('i');
-    marca.className = 'marca' + (cursor.getHours() === 0 ? ' dia' : '');
-    marca.style.left = xDe(cursor, desde) + 'px';
-    frag.appendChild(marca);
-    cursor = new Date(cursor.getTime() + 3600000);
-  }
-  return frag;
-}
-
 function construirLinhas(desde, ate, largura) {
   const linhas = document.createElement('div');
   linhas.className = 'glinhas';
@@ -190,7 +180,6 @@ function construirLinhas(desde, ate, largura) {
     linhas.appendChild(div);
     return linhas;
   }
-  const agora = new Date();
   for (const [maquina, lotes] of porMaquina) {
     const nomeCel = document.createElement('div');
     nomeCel.className = 'gcell-nome';
@@ -203,7 +192,6 @@ function construirLinhas(desde, ate, largura) {
     const tl = document.createElement('div');
     tl.className = 'gtimeline';
     tl.style.width = largura + 'px';
-    tl.appendChild(construirGrelha(desde, ate));
 
     for (const l of lotes) {
       const ini = new Date(l.inicio), fim = new Date(l.fim);
@@ -224,10 +212,6 @@ function construirLinhas(desde, ate, largura) {
         (l.estimado ? '\n(este lote ainda não tem hora real no Orgatex — a duração é uma estimativa)' : '');
       tl.appendChild(bar);
     }
-    const linhaAgora = document.createElement('div');
-    linhaAgora.className = 'linha-agora';
-    linhaAgora.style.left = xDe(agora, desde) + 'px';
-    tl.appendChild(linhaAgora);
 
     row.appendChild(tl);
     linhas.appendChild(row);
@@ -246,10 +230,24 @@ function render() {
   H1.setMinutes(0, 0, 0); H1.setHours(H1.getHours() + 1);
   const largura = horasEntre(H0, H1) * pxPorHora();
 
+  const px = pxPorHora();
+  const meiaNoite = new Date(H0);
+  meiaNoite.setHours(0, 0, 0, 0);
   const scroll = $('scroll');
+  scroll.style.setProperty('--px-hora', px + 'px');
+  scroll.style.setProperty('--px-dia', (px * 24) + 'px');
+  scroll.style.setProperty('--offset-dia', xDe(meiaNoite, H0) + 'px');
+
   scroll.innerHTML = '';
-  scroll.appendChild(construirCabecalho(H0, H1, largura));
-  scroll.appendChild(construirLinhas(H0, H1, largura));
+  const conteudo = document.createElement('div');
+  conteudo.className = 'gantt-conteudo';
+  conteudo.appendChild(construirCabecalho(H0, H1, largura));
+  conteudo.appendChild(construirLinhas(H0, H1, largura));
+  const linhaAgora = document.createElement('div');
+  linhaAgora.className = 'linha-agora';
+  linhaAgora.style.left = xDe(agora, H0) + 'px';
+  conteudo.appendChild(linhaAgora);
+  scroll.appendChild(conteudo);
 }
 
 function irParaAgora() {
