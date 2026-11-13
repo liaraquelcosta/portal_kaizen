@@ -245,7 +245,7 @@ function montar({ maquinas, lotes }, agora) {
   }
 
   for (const [maquina, lista] of emFilaPorMaquina) {
-    lista.sort((a, b) => (a.QueueTime || '').localeCompare(b.QueueTime || '') || String(a.Dyelot).localeCompare(String(b.Dyelot)));
+    lista.sort((a, b) => (a.QueueTime ? new Date(a.QueueTime).getTime() : 0) - (b.QueueTime ? new Date(b.QueueTime).getTime() : 0) || String(a.Dyelot).localeCompare(String(b.Dyelot)));
     let cursor = Math.max(agora.getTime(), fimConhecidoPorMaquina.get(maquina) || agora.getTime());
     for (const l of lista) {
       const duracaoMs = duracaoEstimadaS(maquina, l.SetTime) * 1000;
