@@ -94,8 +94,6 @@ main{padding:14px 16px 32px;display:grid;gap:12px}
     </div>
     <div class="gantt-scroll" id="scroll"></div>
   </div>
-
-  <p class="foot" id="nota"></p>
 </main>
 
 <script>
@@ -287,8 +285,6 @@ async function carregar() {
     if (!r.ok) throw new Error(j.error || 'Não foi possível ler os dados do Gantt.');
     D = j;
     $('stamp').innerHTML = `Atualizado <b>${esc(D.atualizado.replace('T', ' ').slice(0, 16))}</b>`;
-    const intervalo = (D.ligacao && D.ligacao.intervaloMin) || 3;
-    $('nota').textContent = `Dados da programação de lotes do Orgatex (tabela "Dyelots"), só leitura. Mostra todas as máquinas e jigas — não separa Tinturaria de Fio de Tingimento, porque a base de dados não guarda esse setor por máquina. Os lotes marcados com "≈" ainda não têm hora real no Orgatex (a decorrer sem hora de fim, ou na fila sem hora de início) — a duração é uma estimativa pela duração prevista do tingimento. Atualiza-se sozinho de ${intervalo} em ${intervalo} minutos.`;
     montarZoom();
     render();
     irParaAgora();
