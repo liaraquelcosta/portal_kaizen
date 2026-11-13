@@ -16,7 +16,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const PASTA_DADOS = path.join(__dirname, 'data');
 const CACHE = path.join(PASTA_DADOS, 'gantt-orgatex.json');
 // sobe quando o formato do cache muda: força uma leitura imediata ao arrancar
-const VERSAO_DADOS = 3;
+const VERSAO_DADOS = 4;
 const INTERVALO_MIN = Number(process.env.ORGATEX_GANTT_INTERVALO_MIN || 3);
 
 fs.mkdirSync(PASTA_DADOS, { recursive: true });
@@ -149,14 +149,19 @@ async function ler(desde, ate) {
   }
 }
 
+// Máquinas que existem na base do Orgatex mas não devem aparecer no Gantt (não existem fisicamente
+// ou não interessam a este setor) — pedido da Lia.
+const MAQUINAS_EXCLUIDAS = new Set(['JIG4', 'MQ99', 'RAM3', 'JET1']);
+
 function montar({ maquinas, lotes }, agora) {
   // todas as máquinas da base (mesmo sem lote agendado agora) + qualquer uma que apareça nos lotes e não esteja lá
   const nomes = new Set(maquinas.map((m) => (m.MachineNo || '').trim()).filter(Boolean));
   for (const l of lotes) if (l.Machine) nomes.add(l.Machine.trim());
+  for (const m of MAQUINAS_EXCLUIDAS) nomes.delete(m);
   const listaMaquinas = [...nomes].sort((a, b) => ordemMaquina(a) - ordemMaquina(b) || a.localeCompare(b));
 
   const listaLotes = lotes
-    .filter((l) => l.StartTime && l.EndTime)
+    .filter((l) => l.StartTime && l.EndTime && !MAQUINAS_EXCLUIDAS.has((l.Machine || '').trim()))
     .map((l) => {
       const chave = (l.Dyelot || l.DyelotRefNo || '').trim();
       const inicio = new Date(l.StartTime).toISOString();
