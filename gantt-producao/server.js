@@ -16,7 +16,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const PASTA_DADOS = path.join(__dirname, 'data');
 const CACHE = path.join(PASTA_DADOS, 'gantt-orgatex.json');
 // sobe quando o formato do cache muda: força uma leitura imediata ao arrancar
-const VERSAO_DADOS = 2;
+const VERSAO_DADOS = 3;
 const INTERVALO_MIN = Number(process.env.ORGATEX_GANTT_INTERVALO_MIN || 3);
 
 fs.mkdirSync(PASTA_DADOS, { recursive: true });
@@ -65,12 +65,66 @@ function ordemMaquina(m) {
   return i === -1 ? 999 : i;
 }
 
-// Cor fixa por lote (hash do nº de lote), só para distinguir barras vizinhas — não tem significado.
-const PALETA = ['#4C72B0', '#DD8452', '#55A868', '#C44E52', '#8172B2', '#937860', '#DA8BC3', '#8C8C8C', '#CCB974', '#64B5CD', '#2E7D32', '#AD1457'];
-function corDoLote(chave) {
+// Cor aproximada da barra, a partir da descrição da cor do lote (ColourDescript). Não é a cor exata do
+// tingimento (a descrição é texto livre, às vezes um código Pantone/TCX) — é só uma aproximação visual.
+// Lista por ordem: termos mais específicos primeiro, para não "roxo" apanhar dentro de outra palavra, etc.
+const CORES_NOMEADAS = [
+  [/\bpret[oa]\b|preto|black/, '#2b2b2b'],
+  [/branc[oa]|white/, '#f4f4f1'],
+  [/cinz[ae]nt[oa]?|cinza|grey|gray/, '#8e8e93'],
+  [/prat[ae]ad[oa]|prata|silver/, '#b9bfc7'],
+  [/dourad[oa]|ouro|\bgold\b/, '#c9a227'],
+  [/bege|beige/, '#d9c6a5'],
+  [/castanh[oa]|marrom|camel|tabaco|brown/, '#7b4a2d'],
+  [/bordeaux|bordo|vinho|grená|maroon/, '#6e1423'],
+  [/vermelh[oa]|\bred\b/, '#c62828'],
+  [/rosa|pink|fúchsia|fuchsia/, '#e685b5'],
+  [/laranja|coral|orange/, '#e8792b'],
+  [/amarel[oa]|yellow/, '#e3c23c'],
+  [/lima|lima[ãa]o|\blime\b/, '#9acd32'],
+  [/verde|\bgreen\b/, '#4c9a52'],
+  [/marinho|navy/, '#1b2a52'],
+  [/turquesa|ciano|cian|turquoise/, '#1aa6a0'],
+  [/celeste|bleu ciel|ciel|sky/, '#6fb7d6'],
+  [/azul|\bblue\b/, '#3b6fb0'],
+  [/roxo|lilás|lilaz|violeta|púrpura|purple|violet/, '#7a4fa0'],
+  [/creme|marfim|cream|ivory/, '#efe4c8'],
+];
+// claro/escuro (ou light/dark) ajustam a cor base encontrada acima
+function ajustarClaroEscuro(hex, texto) {
+  const t = texto;
+  if (/\bclar[oa]|\blight\b/.test(t)) return misturarComBranco(hex, 0.35);
+  if (/\bescur[oa]|\bdark\b/.test(t)) return misturarComPreto(hex, 0.3);
+  return hex;
+}
+function misturarComBranco(hex, f) { return misturar(hex, [255, 255, 255], f); }
+function misturarComPreto(hex, f) { return misturar(hex, [0, 0, 0], f); }
+function misturar(hex, [br, bg, bb], f) {
+  const n = hex.replace('#', '');
+  const r = parseInt(n.slice(0, 2), 16), g = parseInt(n.slice(2, 4), 16), b = parseInt(n.slice(4, 6), 16);
+  const mix = (c, bc) => Math.round(c * (1 - f) + bc * f);
+  return '#' + [mix(r, br), mix(g, bg), mix(b, bb)].map((v) => v.toString(16).padStart(2, '0')).join('');
+}
+function semAcentos(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+// Paleta neutra só para quando a descrição não dá para reconhecer nenhuma cor (ex. só um código Pantone/TCX).
+const PALETA_SEM_COR = ['#8C8C8C', '#6b7280', '#9aa0a6', '#78716c'];
+function corDoLote(descricao, chaveFallback) {
+  const t = semAcentos(descricao);
+  for (const [re, hex] of CORES_NOMEADAS) {
+    if (re.test(t)) return ajustarClaroEscuro(hex, t);
+  }
   let h = 0;
-  for (const c of String(chave)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return PALETA[h % PALETA.length];
+  for (const c of String(chaveFallback)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return PALETA_SEM_COR[h % PALETA_SEM_COR.length];
+}
+// Luminância aproximada: decide se o texto da barra deve ser escuro (sobre fundos claros) ou branco.
+function corDoTexto(hexFundo) {
+  const n = hexFundo.replace('#', '');
+  const r = parseInt(n.slice(0, 2), 16), g = parseInt(n.slice(2, 4), 16), b = parseInt(n.slice(4, 6), 16);
+  const luminancia = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminancia > 0.6 ? '#1a1a2e' : '#ffffff';
 }
 
 async function ler(desde, ate) {
@@ -107,6 +161,8 @@ function montar({ maquinas, lotes }, agora) {
       const chave = (l.Dyelot || l.DyelotRefNo || '').trim();
       const inicio = new Date(l.StartTime).toISOString();
       const fim = new Date(l.EndTime).toISOString();
+      const corDescricao = (l.ColourDescript || '').trim() || null;
+      const corBarra = corDoLote(corDescricao, chave);
       let estadoLote = 'agendado';
       if (new Date(fim) < agora) estadoLote = 'concluido';
       else if (new Date(inicio) <= agora) estadoLote = 'a_decorrer';
@@ -116,10 +172,11 @@ function montar({ maquinas, lotes }, agora) {
         inicio,
         fim,
         artigo: (l.Article || '').trim() || null,
-        cor: (l.ColourDescript || '').trim() || null,
+        cor: corDescricao,
         cliente: (l.Customer || '').trim() || null,
         estado: estadoLote,
-        corBarra: corDoLote(chave),
+        corBarra,
+        corTexto: corDoTexto(corBarra),
       };
     });
   return { atualizado: agora.toISOString(), versao: VERSAO_DADOS, maquinas: listaMaquinas, lotes: listaLotes };

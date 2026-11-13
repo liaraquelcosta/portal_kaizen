@@ -50,7 +50,7 @@ main{padding:14px 16px 32px;display:grid;gap:12px}
 .marca{position:absolute;top:0;bottom:0;border-left:1px solid var(--grid)}
 .marca.dia{border-left:1px solid #d7dcea}
 .linha-agora{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--vermelho);z-index:6;pointer-events:none}
-.barra{position:absolute;top:3px;height:calc(var(--altura-linha) - 6px);border-radius:5px;color:#fff;font-size:.74rem;line-height:calc(var(--altura-linha) - 6px);padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default;box-sizing:border-box}
+.barra{position:absolute;top:3px;height:calc(var(--altura-linha) - 6px);border-radius:5px;border:1px solid rgba(0,0,0,.12);font-size:.74rem;line-height:calc(var(--altura-linha) - 6px);padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default;box-sizing:border-box}
 .barra.concluido{opacity:.5}
 .barra.a_decorrer{box-shadow:0 0 0 2px #ffb300,0 1px 3px rgba(0,0,0,.25);font-weight:700}
 .barra.agendado{opacity:.92}
@@ -78,7 +78,7 @@ main{padding:14px 16px 32px;display:grid;gap:12px}
       <span class="am dec"><i></i> A decorrer agora</span>
       <span class="am"><i></i> Agendado</span>
       <span class="am conc"><i></i> Concluído</span>
-      <span>Cores das barras só distinguem lotes vizinhos — não têm outro significado.</span>
+      <span>Cor da barra ≈ cor do tingimento (aproximada, a partir da descrição no Orgatex).</span>
     </div>
   </div>
 
@@ -205,6 +205,7 @@ function construirLinhas(desde, ate, largura) {
       bar.style.left = x0 + 'px';
       bar.style.width = Math.max(3, x1 - x0) + 'px';
       bar.style.background = l.corBarra;
+      bar.style.color = l.corTexto || '#fff';
       const prefixo = l.estado === 'concluido' ? '✓ ' : l.estado === 'a_decorrer' ? '▶ ' : '';
       bar.textContent = prefixo + l.lote;
       bar.title = `${l.lote}\nMáquina: ${maquina}\nInício: ${dh(l.inicio)}\nFim previsto: ${dh(l.fim)}` +
