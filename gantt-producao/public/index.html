@@ -32,20 +32,22 @@ main{padding:14px 16px 32px;display:grid;gap:12px}
 .aviso.erro{background:#fdecea;color:var(--vermelho);border-color:#f5c2be}
 [hidden]{display:none!important}
 
-.gantt-scroll{overflow:auto;border:1px solid var(--borda);border-radius:10px;background:#fff;max-height:calc(100vh - 190px);position:relative}
-.ghead{display:flex;position:sticky;top:0;z-index:20;background:#fff}
-.gcell-nome{position:sticky;left:0;z-index:25;background:var(--azul-claro);color:var(--azul);font-weight:700;padding:5px 10px;white-space:nowrap;border-right:2px solid var(--azul);border-bottom:1px solid var(--borda);width:var(--largura-nome);min-width:var(--largura-nome);display:flex;align-items:center}
-.ghead .gcell-nome{height:calc(var(--altura-dia) + var(--altura-hora))}
-.gtimeline-head{position:relative;background:var(--azul-claro);border-bottom:1px solid var(--borda)}
+.gantt-wrap{display:flex;border:1px solid var(--borda);border-radius:10px;background:#fff;overflow:hidden;max-height:calc(100vh - 190px)}
+.gantt-nomes{flex:0 0 var(--largura-nome);width:var(--largura-nome);overflow:hidden;border-right:2px solid var(--azul)}
+.nomes-corpo{will-change:transform}
+.gcell-nome{background:#fbfcff;color:var(--azul);font-weight:700;padding:5px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid var(--borda);height:var(--altura-linha);display:flex;align-items:center;box-sizing:border-box}
+.gcell-nome:nth-child(even){background:#f3f5fb}
+.gcell-nome.cabecalho{background:var(--azul-claro);height:calc(var(--altura-dia) + var(--altura-hora));border-bottom:1px solid var(--borda)}
+.gantt-scroll{overflow:auto;flex:1 1 auto;min-width:0;position:relative}
+.ghead{position:sticky;top:0;z-index:20;background:var(--azul-claro);border-bottom:1px solid var(--borda);height:calc(var(--altura-dia) + var(--altura-hora))}
+.gtimeline-head{position:relative;height:100%}
 .rotulo-dia,.rotulo-hora{position:absolute;top:0;font-size:.75rem;color:var(--azul);font-weight:700;border-left:1px solid #fff;padding:3px 6px;white-space:nowrap;overflow:hidden;box-sizing:border-box}
 .rotulo-dia{height:var(--altura-dia)}
 .rotulo-hora{top:var(--altura-dia);height:var(--altura-hora);font-weight:400;font-size:.72rem;color:var(--cinza);border-left:1px solid var(--borda)}
 .rotulo-hora.agora-col{color:var(--vermelho);font-weight:700}
 
 .glinhas{position:relative}
-.grow{display:flex;border-bottom:1px solid var(--borda)}
-.grow:nth-child(even) .gcell-nome{background:#f3f5fb}
-.grow .gcell-nome{background:#fbfcff;height:var(--altura-linha)}
+.grow{border-bottom:1px solid var(--borda)}
 .gtimeline{position:relative;height:var(--altura-linha)}
 .marca{position:absolute;top:0;bottom:0;border-left:1px solid var(--grid)}
 .marca.dia{border-left:1px solid #d7dcea}
@@ -85,7 +87,13 @@ main{padding:14px 16px 32px;display:grid;gap:12px}
     </div>
   </div>
 
-  <div class="gantt-scroll" id="scroll"></div>
+  <div class="gantt-wrap">
+    <div class="gantt-nomes" id="nomesCol">
+      <div class="gcell-nome cabecalho">Máquina</div>
+      <div class="nomes-corpo" id="nomesCorpo"></div>
+    </div>
+    <div class="gantt-scroll" id="scroll"></div>
+  </div>
 
   <p class="foot" id="nota"></p>
 </main>
@@ -117,10 +125,6 @@ function dh(iso) {
 function construirCabecalho(desde, ate, largura) {
   const head = document.createElement('div');
   head.className = 'ghead';
-  const nome = document.createElement('div');
-  nome.className = 'gcell-nome';
-  nome.textContent = 'Máquina';
-  head.appendChild(nome);
 
   const tl = document.createElement('div');
   tl.className = 'gtimeline-head';
@@ -174,6 +178,8 @@ function construirGrelha(desde, ate) {
 function construirLinhas(desde, ate, largura) {
   const linhas = document.createElement('div');
   linhas.className = 'glinhas';
+  const nomesCorpo = $('nomesCorpo');
+  nomesCorpo.innerHTML = '';
   const porMaquina = new Map((D.maquinas || []).map((m) => [m, []]));
   for (const l of D.lotes || []) {
     if (!porMaquina.has(l.maquina)) porMaquina.set(l.maquina, []);
@@ -188,12 +194,13 @@ function construirLinhas(desde, ate, largura) {
   }
   const agora = new Date();
   for (const [maquina, lotes] of porMaquina) {
+    const nomeCel = document.createElement('div');
+    nomeCel.className = 'gcell-nome';
+    nomeCel.textContent = maquina;
+    nomesCorpo.appendChild(nomeCel);
+
     const row = document.createElement('div');
     row.className = 'grow';
-    const nome = document.createElement('div');
-    nome.className = 'gcell-nome';
-    nome.textContent = maquina;
-    row.appendChild(nome);
 
     const tl = document.createElement('div');
     tl.className = 'gtimeline';
@@ -289,6 +296,9 @@ async function carregar() {
     mostrarErro(e.message);
   }
 }
+$('scroll').addEventListener('scroll', () => {
+  $('nomesCorpo').style.transform = 'translateY(-' + $('scroll').scrollTop + 'px)';
+});
 carregar();
 $('irAgora').addEventListener('click', irParaAgora);
 $('refresh').addEventListener('click', async (ev) => {

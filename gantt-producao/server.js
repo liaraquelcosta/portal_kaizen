@@ -238,7 +238,8 @@ function montar({ maquinas, lotes }, agora) {
       fimMs = new Date(l.EndTime).getTime();
     } else {
       // State 30 (a decorrer): ainda não tem hora de fim no Orgatex — estima-se pela duração prevista.
-      fimMs = inicioMs + duracaoEstimadaS(maquina, l.SetTime) * 1000;
+      // Se a estimativa já passou mas o Orgatex ainda não deu como terminado, a barra vai pelo menos até agora.
+      fimMs = Math.max(inicioMs + duracaoEstimadaS(maquina, l.SetTime) * 1000, agora.getTime());
       estimadoFim = true;
     }
     adicionar(l, inicioMs, fimMs, false, estimadoFim);
