@@ -19,6 +19,12 @@ window.PORTAL_CONFIG = {
           icone: "🧪"
         },
         {
+          nome: "Gantt",
+          descricao: "Programação de lotes em tempo real — Tinturaria de Fio e Tingimento",
+          url: "http://128.0.0.82:3000/gantt.html",
+          icone: "📊"
+        },
+        {
           nome: "Somelos Planning",
           descricao: "Planeamento da produção",
           url: "http://128.0.0.82:8000",
