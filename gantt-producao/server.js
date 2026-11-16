@@ -16,7 +16,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const PASTA_DADOS = path.join(__dirname, 'data');
 const CACHE = path.join(PASTA_DADOS, 'gantt-orgatex.json');
 // sobe quando o formato do cache muda: força uma leitura imediata ao arrancar
-const VERSAO_DADOS = 6;
+const VERSAO_DADOS = 7;
 const INTERVALO_MIN = Number(process.env.ORGATEX_GANTT_INTERVALO_MIN || 3);
 
 fs.mkdirSync(PASTA_DADOS, { recursive: true });
@@ -160,6 +160,48 @@ const MAQUINAS_EXCLUIDAS = new Set(['JIG4', 'MQ99', 'MQ00', 'MQ10', 'MQ11', 'RAM
 // recente da mesma máquina para estimar — 6h é um valor típico de um tingimento.
 const DURACAO_OMISSAO_S = 6 * 3600;
 
+// A fábrica para das 6h de sábado às 6h de segunda (confirmado nos dados: zero lotes a começar ou a
+// acabar nesse intervalo). As estimativas (fila e lotes a decorrer) saltam este período — não há
+// ninguém a arrancar máquinas nem lotes a avançar sozinhos durante o fecho.
+function estaFechado(ms) {
+  const d = new Date(ms);
+  const dia = d.getDay(), hora = d.getHours() + d.getMinutes() / 60;
+  if (dia === 6 && hora >= 6) return true; // sábado a partir das 6h
+  if (dia === 0) return true; // domingo todo
+  if (dia === 1 && hora < 6) return true; // segunda antes das 6h
+  return false;
+}
+function proximaSegunda6h(ms) {
+  const d = new Date(ms);
+  d.setHours(6, 0, 0, 0);
+  let dias = (1 - d.getDay() + 7) % 7;
+  if (dias === 0 && d.getTime() < ms) dias = 7;
+  d.setDate(d.getDate() + dias);
+  return d.getTime();
+}
+function proximoSabado6h(ms) {
+  const d = new Date(ms);
+  d.setHours(6, 0, 0, 0);
+  let dias = (6 - d.getDay() + 7) % 7;
+  if (dias === 0 && d.getTime() <= ms) dias = 7;
+  d.setDate(d.getDate() + dias);
+  return d.getTime();
+}
+// Início ajustado: se cair dentro do fecho, empurra para a reabertura (segunda às 6h).
+function inicioAjustado(ms) {
+  return estaFechado(ms) ? proximaSegunda6h(ms) : ms;
+}
+// Avança uma duração a partir de um início (já fora do fecho), saltando qualquer fecho pelo meio.
+function avancarComFecho(inicioMs, duracaoMs) {
+  let t = inicioMs, restante = duracaoMs;
+  while (restante > 0) {
+    const proxFecho = proximoSabado6h(t);
+    const disponivel = proxFecho - t;
+    if (disponivel >= restante) { t += restante; restante = 0; } else { t = proximaSegunda6h(proxFecho); restante -= disponivel; }
+  }
+  return t;
+}
+
 function montar({ maquinas, lotes }, agora) {
   // todas as máquinas da base (mesmo sem lote agendado agora) + qualquer uma que apareça nos lotes e não esteja lá
   const nomes = new Set(maquinas.map((m) => (m.MachineNo || '').trim()).filter(Boolean));
@@ -237,9 +279,10 @@ function montar({ maquinas, lotes }, agora) {
     if (l.EndTime) {
       fimMs = new Date(l.EndTime).getTime();
     } else {
-      // State 30 (a decorrer): ainda não tem hora de fim no Orgatex — estima-se pela duração prevista.
-      // Se a estimativa já passou mas o Orgatex ainda não deu como terminado, a barra vai pelo menos até agora.
-      fimMs = Math.max(inicioMs + duracaoEstimadaS(maquina, l.SetTime) * 1000, agora.getTime());
+      // State 30 (a decorrer): ainda não tem hora de fim no Orgatex — estima-se pela duração prevista,
+      // saltando o fecho de fim de semana. Se a estimativa já passou mas o Orgatex ainda não deu como
+      // terminado, a barra vai pelo menos até agora.
+      fimMs = Math.max(avancarComFecho(inicioMs, duracaoEstimadaS(maquina, l.SetTime) * 1000), agora.getTime());
       estimadoFim = true;
     }
     adicionar(l, inicioMs, fimMs, false, estimadoFim);
@@ -247,11 +290,12 @@ function montar({ maquinas, lotes }, agora) {
 
   for (const [maquina, lista] of emFilaPorMaquina) {
     lista.sort((a, b) => (a.QueueTime ? new Date(a.QueueTime).getTime() : 0) - (b.QueueTime ? new Date(b.QueueTime).getTime() : 0) || String(a.Dyelot).localeCompare(String(b.Dyelot)));
-    let cursor = Math.max(agora.getTime(), fimConhecidoPorMaquina.get(maquina) || agora.getTime());
+    let cursor = inicioAjustado(Math.max(agora.getTime(), fimConhecidoPorMaquina.get(maquina) || agora.getTime()));
     for (const l of lista) {
       const duracaoMs = duracaoEstimadaS(maquina, l.SetTime) * 1000;
-      adicionar(l, cursor, cursor + duracaoMs, true, true);
-      cursor += duracaoMs;
+      const fimMs = avancarComFecho(cursor, duracaoMs);
+      adicionar(l, cursor, fimMs, true, true);
+      cursor = fimMs;
     }
   }
 
