@@ -56,7 +56,10 @@ main{padding:14px 16px 32px;display:grid;gap:12px}
   background-position: var(--offset-dia) 0, var(--offset-dia) 0;
 }
 .linha-agora{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--vermelho);z-index:6;pointer-events:none}
-.barra{position:absolute;top:3px;height:calc(var(--altura-linha) - 6px);border-radius:5px;border:1px solid rgba(0,0,0,.12);font-size:.74rem;line-height:calc(var(--altura-linha) - 6px);padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default;box-sizing:border-box}
+.fecho-semana{position:absolute;top:calc(var(--altura-dia) + var(--altura-hora));bottom:0;z-index:1;pointer-events:none;
+  background-image:repeating-linear-gradient(45deg, rgba(16,50,115,.10) 0, rgba(16,50,115,.10) 5px, transparent 5px, transparent 14px);
+  border-left:1px dashed var(--borda);border-right:1px dashed var(--borda)}
+.barra{position:absolute;z-index:2;top:3px;height:calc(var(--altura-linha) - 6px);border-radius:5px;border:1px solid rgba(0,0,0,.12);font-size:.74rem;line-height:calc(var(--altura-linha) - 6px);padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default;box-sizing:border-box}
 .barra.concluido{opacity:.5}
 .barra.a_decorrer{box-shadow:0 0 0 2px #ffb300,0 1px 3px rgba(0,0,0,.25);font-weight:700}
 .barra.agendado{opacity:.92}
@@ -122,6 +125,24 @@ function dh(iso) {
   if (!iso) return '–';
   const d = new Date(iso);
   return d.toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+}
+
+// A fábrica para de sábado às 6h a segunda às 6h (confirmado nos dados do Orgatex). Devolve os
+// intervalos [inicioMs, fimMs] de fecho que tocam a janela [desde, ate], para desenhar o padrão.
+function intervalosFecho(desde, ate) {
+  const out = [];
+  const d = new Date(desde);
+  d.setHours(6, 0, 0, 0);
+  let diasAteSabado = (6 - d.getDay() + 7) % 7;
+  d.setDate(d.getDate() + diasAteSabado);
+  if (d.getTime() > +desde) d.setDate(d.getDate() - 7); // apanha um fecho que já tenha começado antes de "desde"
+  while (d.getTime() < +ate) {
+    const inicio = d.getTime();
+    const fim = new Date(d); fim.setDate(fim.getDate() + 2); // segunda às 6h
+    if (fim.getTime() > +desde) out.push([Math.max(inicio, +desde), Math.min(fim.getTime(), +ate)]);
+    d.setDate(d.getDate() + 7);
+  }
+  return out;
 }
 
 function construirCabecalho(desde, ate, largura) {
@@ -243,6 +264,14 @@ function render() {
   conteudo.className = 'gantt-conteudo';
   conteudo.appendChild(construirCabecalho(H0, H1, largura));
   conteudo.appendChild(construirLinhas(H0, H1, largura));
+  for (const [ini, fim] of intervalosFecho(H0, H1)) {
+    const faixa = document.createElement('div');
+    faixa.className = 'fecho-semana';
+    faixa.style.left = xDe(new Date(ini), H0) + 'px';
+    faixa.style.width = Math.max(0, xDe(new Date(fim), H0) - xDe(new Date(ini), H0)) + 'px';
+    faixa.title = 'Fábrica fechada (sábado às 6h a segunda às 6h)';
+    conteudo.appendChild(faixa);
+  }
   const linhaAgora = document.createElement('div');
   linhaAgora.className = 'linha-agora';
   linhaAgora.style.left = xDe(agora, H0) + 'px';
