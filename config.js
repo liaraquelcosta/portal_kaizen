@@ -27,7 +27,8 @@ window.PORTAL_CONFIG = {
         {
           nome: "Somelos Planning",
           descricao: "Planeamento da produção",
-          url: "http://128.0.0.82:8000",
+          // Temporário: ainda não migrado para o servidor novo (128.0.0.82). Reverter quando migrar.
+          url: "http://128.0.132.205:8000",
           icone: "📅"
         }
       ]
