@@ -16,7 +16,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const PASTA_DADOS = path.join(__dirname, 'data');
 const CACHE = path.join(PASTA_DADOS, 'gantt-orgatex.json');
 // sobe quando o formato do cache muda: força uma leitura imediata ao arrancar
-const VERSAO_DADOS = 9;
+const VERSAO_DADOS = 10;
 const INTERVALO_MIN = Number(process.env.ORGATEX_GANTT_INTERVALO_MIN || 3);
 
 fs.mkdirSync(PASTA_DADOS, { recursive: true });
@@ -75,6 +75,7 @@ const CORES_NOMEADAS = [
   [/prat[ae]ad[oa]|prata|silver/, '#b9bfc7'],
   [/dourad[oa]|ouro|\bgold\b/, '#c9a227'],
   [/bege|beige/, '#d9c6a5'],
+  [/acaju|acajou|mogno|mahogany/, '#6b3226'],
   [/castanh[oa]|marrom|camel|tabaco|brown/, '#7b4a2d'],
   [/bordeaux|bordo|vinho|grená|maroon/, '#6e1423'],
   [/vermelh[oa]|\bred\b/, '#c62828'],
