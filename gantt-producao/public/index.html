@@ -38,9 +38,10 @@ main{padding:14px 16px 32px;display:grid;gap:12px}
 .gcell-nome{background:#fbfcff;color:var(--azul);font-weight:700;padding:5px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid var(--borda);height:var(--altura-linha);display:flex;align-items:center;box-sizing:border-box}
 .gcell-nome:nth-child(even){background:#f3f5fb}
 .gcell-nome.cabecalho{background:var(--azul-claro);height:calc(var(--altura-dia) + var(--altura-hora));border-bottom:1px solid var(--borda)}
+.gantt-area{display:flex;flex-direction:column;flex:1 1 auto;min-width:0}
+.ghead-fixo{overflow:hidden;background:var(--azul-claro);border-bottom:1px solid var(--borda);height:calc(var(--altura-dia) + var(--altura-hora));flex:0 0 auto}
+.gtimeline-head{position:relative;height:100%;will-change:transform}
 .gantt-scroll{overflow:auto;flex:1 1 auto;min-width:0;position:relative}
-.ghead{position:sticky;top:0;z-index:20;background:var(--azul-claro);border-bottom:1px solid var(--borda);height:calc(var(--altura-dia) + var(--altura-hora))}
-.gtimeline-head{position:relative;height:100%}
 .rotulo-dia,.rotulo-hora{position:absolute;top:0;font-size:.75rem;color:var(--azul);font-weight:700;border-left:1px solid #fff;padding:3px 6px;white-space:nowrap;overflow:hidden;box-sizing:border-box}
 .rotulo-dia{height:var(--altura-dia)}
 .rotulo-hora{top:var(--altura-dia);height:var(--altura-hora);font-weight:400;font-size:.72rem;color:var(--cinza);border-left:1px solid var(--borda)}
@@ -99,7 +100,10 @@ main{padding:14px 16px 32px;display:grid;gap:12px}
       <div class="gcell-nome cabecalho">Máquina</div>
       <div class="nomes-corpo" id="nomesCorpo"></div>
     </div>
-    <div class="gantt-scroll" id="scroll"></div>
+    <div class="gantt-area">
+      <div class="ghead-fixo" id="headFixo"></div>
+      <div class="gantt-scroll" id="scroll"></div>
+    </div>
   </div>
 </main>
 
@@ -146,9 +150,6 @@ function intervalosFecho(desde, ate) {
 }
 
 function construirCabecalho(desde, ate, largura) {
-  const head = document.createElement('div');
-  head.className = 'ghead';
-
   const tl = document.createElement('div');
   tl.className = 'gtimeline-head';
   tl.style.width = largura + 'px';
@@ -180,8 +181,7 @@ function construirCabecalho(desde, ate, largura) {
     cursor = new Date(cursor.getTime() + 3600000);
   }
   fecharDia(largura);
-  head.appendChild(tl);
-  return head;
+  return tl;
 }
 
 function construirLinhas(desde, ate, largura) {
@@ -259,10 +259,15 @@ function render() {
   scroll.style.setProperty('--px-dia', (px * 24) + 'px');
   scroll.style.setProperty('--offset-dia', xDe(meiaNoite, H0) + 'px');
 
+  const scrollTopAntes = scroll.scrollTop, scrollLeftAntes = scroll.scrollLeft;
+
+  const headFixo = $('headFixo');
+  headFixo.innerHTML = '';
+  headFixo.appendChild(construirCabecalho(H0, H1, largura));
+
   scroll.innerHTML = '';
   const conteudo = document.createElement('div');
   conteudo.className = 'gantt-conteudo';
-  conteudo.appendChild(construirCabecalho(H0, H1, largura));
   conteudo.appendChild(construirLinhas(H0, H1, largura));
   for (const [ini, fim] of intervalosFecho(H0, H1)) {
     const faixa = document.createElement('div');
@@ -277,6 +282,16 @@ function render() {
   linhaAgora.style.left = xDe(agora, H0) + 'px';
   conteudo.appendChild(linhaAgora);
   scroll.appendChild(conteudo);
+  scroll.scrollTop = scrollTopAntes;
+  scroll.scrollLeft = scrollLeftAntes;
+  sincronizarScroll();
+}
+
+function sincronizarScroll() {
+  const scroll = $('scroll');
+  $('nomesCorpo').style.transform = 'translateY(-' + scroll.scrollTop + 'px)';
+  const headConteudo = $('headFixo').firstChild;
+  if (headConteudo) headConteudo.style.transform = 'translateX(-' + scroll.scrollLeft + 'px)';
 }
 
 function irParaAgora() {
@@ -306,6 +321,7 @@ function mostrarErro(msg) {
 }
 
 async function carregar() {
+  const primeiraVez = D == null;
   try {
     const r = await fetch('/api/gantt-orgatex', { cache: 'no-store' });
     const j = await r.json();
@@ -314,14 +330,12 @@ async function carregar() {
     $('stamp').innerHTML = `Atualizado <b>${esc(D.atualizado.replace('T', ' ').slice(0, 16))}</b>`;
     montarZoom();
     render();
-    irParaAgora();
+    if (primeiraVez) irParaAgora(); // nas atualizações seguintes mantém-se onde a pessoa estava a ver
   } catch (e) {
     mostrarErro(e.message);
   }
 }
-$('scroll').addEventListener('scroll', () => {
-  $('nomesCorpo').style.transform = 'translateY(-' + $('scroll').scrollTop + 'px)';
-});
+$('scroll').addEventListener('scroll', sincronizarScroll);
 carregar();
 $('irAgora').addEventListener('click', irParaAgora);
 $('refresh').addEventListener('click', async (ev) => {
