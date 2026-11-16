@@ -16,7 +16,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const PASTA_DADOS = path.join(__dirname, 'data');
 const CACHE = path.join(PASTA_DADOS, 'gantt-orgatex.json');
 // sobe quando o formato do cache muda: força uma leitura imediata ao arrancar
-const VERSAO_DADOS = 11;
+const VERSAO_DADOS = 12;
 const INTERVALO_MIN = Number(process.env.ORGATEX_GANTT_INTERVALO_MIN || 3);
 
 fs.mkdirSync(PASTA_DADOS, { recursive: true });
@@ -135,9 +135,22 @@ function misturar(hex, [br, bg, bb], f) {
 function semAcentos(s) {
   return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
-// Paleta neutra só para quando a descrição não dá para reconhecer nenhuma cor (ex. só um código Pantone/TCX).
+// O Orgatex guarda a cor exata (RGB) no campo Color, formato Windows COLORREF (0x00BBGGRR: vermelho no
+// byte mais baixo, azul no mais alto). Quando existe é muito mais fiável do que adivinhar pela descrição
+// em texto. 0 é usado como "sem cor definida" (não é preto a sério, exceto em casos raros) — ignora-se.
+function corDoRGB(color) {
+  if (!color) return null;
+  const v = (color >>> 0) & 0xffffff;
+  if (v === 0) return null;
+  const r = v & 0xff, g = (v >> 8) & 0xff, b = (v >> 16) & 0xff;
+  return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+// Paleta neutra só para quando não há cor RGB nem a descrição dá para reconhecer nenhuma cor (ex. só um
+// código Pantone/TCX).
 const PALETA_SEM_COR = ['#8C8C8C', '#6b7280', '#9aa0a6', '#78716c'];
-function corDoLote(descricao, chaveFallback) {
+function corDoLote(descricao, chaveFallback, colorRGB) {
+  const doRGB = corDoRGB(colorRGB);
+  if (doRGB) return doRGB;
   const t = semAcentos(descricao);
   for (const [re, hex] of CORES_NOMEADAS) {
     if (re.test(t)) return ajustarClaroEscuro(hex, t);
@@ -182,7 +195,7 @@ async function ler(desde, ate) {
       .input('filaDesde', sql.DateTime, filaDesde)
       .query(`
         SELECT Machine, Dyelot, DyelotRefNo, StartTime, EndTime, Article, ColourDescript, Customer,
-               State, SetTime, QueueTime
+               State, SetTime, QueueTime, Color
         FROM Dyelots WITH (NOLOCK)
         WHERE (EndTime >= @desde OR EndTime IS NULL)
           AND (StartTime <= @ate OR StartTime IS NULL)
@@ -300,7 +313,7 @@ function montar({ maquinas, lotes }, agora) {
     const fim = new Date(fimMs).toISOString();
     const corDescricao = (l.ColourDescript || '').trim() || null;
     const evento = EVENTOS_ESPECIAIS[chave.toUpperCase()];
-    const corBarra = evento ? evento.cor : corDoLote(corDescricao, chave);
+    const corBarra = evento ? evento.cor : corDoLote(corDescricao, chave, l.Color);
     let estadoLote = 'agendado';
     if (!estimadoFim && fimMs < agora.getTime()) estadoLote = 'concluido';
     else if (inicioMs <= agora.getTime()) estadoLote = 'a_decorrer';
