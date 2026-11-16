@@ -16,7 +16,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const PASTA_DADOS = path.join(__dirname, 'data');
 const CACHE = path.join(PASTA_DADOS, 'gantt-orgatex.json');
 // sobe quando o formato do cache muda: força uma leitura imediata ao arrancar
-const VERSAO_DADOS = 10;
+const VERSAO_DADOS = 11;
 const INTERVALO_MIN = Number(process.env.ORGATEX_GANTT_INTERVALO_MIN || 3);
 
 fs.mkdirSync(PASTA_DADOS, { recursive: true });
@@ -69,25 +69,51 @@ function ordemMaquina(m) {
 // tingimento (a descrição é texto livre, às vezes um código Pantone/TCX) — é só uma aproximação visual.
 // Lista por ordem: termos mais específicos primeiro, para não "roxo" apanhar dentro de outra palavra, etc.
 const CORES_NOMEADAS = [
-  [/\bpret[oa]\b|preto|black/, '#2b2b2b'],
-  [/branc[oa]|white/, '#f4f4f1'],
+  [/\bpret[oa]\b|preto|black|\bébano\b|ebano|carvão|carvao/, '#2b2b2b'],
+  [/branc[oa]|white|nev[ae]|off[\s-]?white/, '#f4f4f1'],
+  [/antracite|anthracite|grafite|graphite|chumbo/, '#4a4a4f'],
   [/cinz[ae]nt[oa]?|cinza|grey|gray/, '#8e8e93'],
   [/prat[ae]ad[oa]|prata|silver/, '#b9bfc7'],
   [/dourad[oa]|ouro|\bgold\b/, '#c9a227'],
+  [/bronze/, '#8c6a3f'],
+  [/cobre|copper/, '#b06a3a'],
+  [/champagne|champanhe/, '#e9d9b6'],
+  [/taupe|pérola|perola|pearl/, '#c9c0b4'],
+  [/nude/, '#d9b99a'],
+  [/are[ia]a|sand/, '#dcc49a'],
   [/bege|beige/, '#d9c6a5'],
+  [/cru\b|ecru|ecru[-\s]?ish/, '#e6dcc3'],
+  [/mel\b|honey/, '#cf9a3e'],
+  [/mostarda|mustard/, '#c9a227'],
+  [/kaki|khaki/, '#8a8458'],
+  [/oliva|olive/, '#6f7a3a'],
   [/acaju|acajou|mogno|mahogany/, '#6b3226'],
+  [/chocolate|cacau|cocoa/, '#4a2f22'],
   [/castanh[oa]|marrom|camel|tabaco|brown/, '#7b4a2d'],
-  [/bordeaux|bordo|vinho|grená|maroon/, '#6e1423'],
+  [/terracota|terracotta/, '#aa522e'],
+  [/ferrugem|rust/, '#9a4a2a'],
+  [/bordeaux|bordo|vinho|grená|maroon|marsala/, '#6e1423'],
+  [/cereja|cherry/, '#a0192f'],
   [/vermelh[oa]|\bred\b/, '#c62828'],
-  [/rosa|pink|fúchsia|fuchsia/, '#e685b5'],
-  [/laranja|coral|orange/, '#e8792b'],
+  [/framboesa|raspberry|magenta/, '#c22a6a'],
+  [/fúchsia|fuchsia|\bpink\b/, '#e685b5'],
+  [/rosa velh[oa]|rosa antigo|dusty pink/, '#c98fa0'],
+  [/\brosa\b/, '#e685b5'],
+  [/salmão|salmao|salmon/, '#e8917a'],
+  [/coral/, '#ea7158'],
+  [/laranja|orange/, '#e8792b'],
+  [/âmbar|ambar|amber|topázio|topazio/, '#d99a2b'],
   [/amarel[oa]|yellow/, '#e3c23c'],
   [/lima|lima[ãa]o|\blime\b/, '#9acd32'],
+  [/jade|esmeralda|emerald/, '#2e8b6f'],
   [/verde|\bgreen\b/, '#4c9a52'],
   [/marinho|navy/, '#1b2a52'],
+  [/petróleo|petroleo|teal/, '#1b5e5a'],
   [/turquesa|ciano|cian|turquoise/, '#1aa6a0'],
-  [/celeste|bleu ciel|ciel|sky/, '#6fb7d6'],
+  [/celeste|bleu ciel|ciel|\bsky\b/, '#6fb7d6'],
   [/azul|\bblue\b/, '#3b6fb0'],
+  [/lavanda|lavender/, '#9a8fc4'],
+  [/malva|mauve/, '#a97ca0'],
   [/roxo|lilás|lilaz|violeta|púrpura|purple|violet/, '#7a4fa0'],
   [/creme|marfim|cream|ivory/, '#efe4c8'],
 ];
