@@ -16,7 +16,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const PASTA_DADOS = path.join(__dirname, 'data');
 const CACHE = path.join(PASTA_DADOS, 'gantt-orgatex.json');
 // sobe quando o formato do cache muda: força uma leitura imediata ao arrancar
-const VERSAO_DADOS = 7;
+const VERSAO_DADOS = 8;
 const INTERVALO_MIN = Number(process.env.ORGATEX_GANTT_INTERVALO_MIN || 3);
 
 fs.mkdirSync(PASTA_DADOS, { recursive: true });
@@ -232,9 +232,14 @@ function montar({ maquinas, lotes }, agora) {
   //    (real ou estimado) dessa máquina.
   const prontos = [];
   const emFilaPorMaquina = new Map();
+  // Registos "a decorrer" (sem hora de fim) parados há dias no Orgatex são lixo de dados (nunca foram
+  // fechados), não lotes reais a decorrer — senão ficariam "esticados" até agora, parecendo um 2º lote
+  // a decorrer na mesma máquina. Um tingimento real não passa disto.
+  const LIMITE_A_DECORRER_MS = 48 * 3600000;
   for (const l of validos) {
     const maquina = (l.Machine || '').trim();
     if (l.StartTime) {
+      if (!l.EndTime && agora.getTime() - new Date(l.StartTime).getTime() > LIMITE_A_DECORRER_MS) continue;
       prontos.push(l);
     } else {
       if (!emFilaPorMaquina.has(maquina)) emFilaPorMaquina.set(maquina, []);
