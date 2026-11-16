@@ -16,7 +16,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const PASTA_DADOS = path.join(__dirname, 'data');
 const CACHE = path.join(PASTA_DADOS, 'gantt-orgatex.json');
 // sobe quando o formato do cache muda: força uma leitura imediata ao arrancar
-const VERSAO_DADOS = 8;
+const VERSAO_DADOS = 9;
 const INTERVALO_MIN = Number(process.env.ORGATEX_GANTT_INTERVALO_MIN || 3);
 
 fs.mkdirSync(PASTA_DADOS, { recursive: true });
@@ -119,6 +119,17 @@ function corDoLote(descricao, chaveFallback) {
   for (const c of String(chaveFallback)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return PALETA_SEM_COR[h % PALETA_SEM_COR.length];
 }
+// Paragens da máquina (não são lotes): o Orgatex regista-as como se fossem um "lote" especial, com
+// este texto fixo no campo Dyelot. Mostram-se com uma cor fixa (como no Orgatex), não pela cor do tingimento.
+const EVENTOS_ESPECIAIS = {
+  AVARIADO: { cor: '#b3261e', rotulo: 'Avaria' },
+  AVARIA: { cor: '#b3261e', rotulo: 'Avaria' },
+  'MANUTENÇÃO': { cor: '#e08e00', rotulo: 'Manutenção' },
+  MANUTENCAO: { cor: '#e08e00', rotulo: 'Manutenção' },
+  'LAVAR JIGGER': { cor: '#1aa6a0', rotulo: 'Lavagem' },
+  LAVAGEM: { cor: '#1aa6a0', rotulo: 'Lavagem' },
+};
+
 // Luminância aproximada: decide se o texto da barra deve ser escuro (sobre fundos claros) ou branco.
 function corDoTexto(hexFundo) {
   const n = hexFundo.replace('#', '');
@@ -133,17 +144,22 @@ async function ler(desde, ate) {
   try {
     pool = await new sql.ConnectionPool(configLigacao()).connect();
     const maquinasR = await pool.request().query(`SELECT MachineNo FROM Machines WITH (NOLOCK) ORDER BY MachineNo`);
+    // Um lote na fila (sem hora de início) pode ficar dias à espera — ex. uma avaria ou manutenção só
+    // é retirada da fila quando for resolvida — por isso usa-se um limite bem mais largo que o "desde"
+    // da janela do Gantt (só para não arrastar lixo de anos, como filas esquecidas de 2024).
+    const filaDesde = new Date(Math.min(desde.getTime(), Date.now() - 30 * 24 * 3600000));
     const lotesR = await pool
       .request()
       .input('desde', sql.DateTime, desde)
       .input('ate', sql.DateTime, ate)
+      .input('filaDesde', sql.DateTime, filaDesde)
       .query(`
         SELECT Machine, Dyelot, DyelotRefNo, StartTime, EndTime, Article, ColourDescript, Customer,
                State, SetTime, QueueTime
         FROM Dyelots WITH (NOLOCK)
         WHERE (EndTime >= @desde OR EndTime IS NULL)
           AND (StartTime <= @ate OR StartTime IS NULL)
-          AND (StartTime IS NOT NULL OR QueueTime >= @desde)
+          AND (StartTime IS NOT NULL OR QueueTime >= @filaDesde)
         ORDER BY Machine, StartTime
       `);
     return { maquinas: maquinasR.recordset, lotes: lotesR.recordset };
@@ -256,7 +272,8 @@ function montar({ maquinas, lotes }, agora) {
     const inicio = new Date(inicioMs).toISOString();
     const fim = new Date(fimMs).toISOString();
     const corDescricao = (l.ColourDescript || '').trim() || null;
-    const corBarra = corDoLote(corDescricao, chave);
+    const evento = EVENTOS_ESPECIAIS[chave.toUpperCase()];
+    const corBarra = evento ? evento.cor : corDoLote(corDescricao, chave);
     let estadoLote = 'agendado';
     if (!estimadoFim && fimMs < agora.getTime()) estadoLote = 'concluido';
     else if (inicioMs <= agora.getTime()) estadoLote = 'a_decorrer';
@@ -272,6 +289,7 @@ function montar({ maquinas, lotes }, agora) {
       corBarra,
       corTexto: corDoTexto(corBarra),
       estimado: !!(estimadoInicio || estimadoFim),
+      evento: evento ? evento.rotulo : null,
     });
     const atual = fimConhecidoPorMaquina.get(maquina);
     if (!atual || fimMs > atual) fimConhecidoPorMaquina.set(maquina, fimMs);

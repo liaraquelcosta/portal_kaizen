@@ -225,12 +225,12 @@ function construirLinhas(desde, ate, largura) {
       bar.style.width = Math.max(3, x1 - x0) + 'px';
       bar.style.background = l.corBarra;
       bar.style.color = l.corTexto || '#fff';
-      const prefixo = l.estado === 'concluido' ? '✓ ' : l.estado === 'a_decorrer' ? '▶ ' : '';
-      bar.textContent = prefixo + (l.estimado ? '≈ ' : '') + l.lote;
-      bar.title = `${l.lote}\nMáquina: ${maquina}\nInício: ${dh(l.inicio)}${l.estimado ? ' (estimado)' : ''}\nFim previsto: ${dh(l.fim)}${l.estimado ? ' (estimado)' : ''}` +
-        (l.artigo ? `\nArtigo: ${l.artigo}` : '') + (l.cor ? `\nCor: ${l.cor}` : '') + (l.cliente ? `\nCliente: ${l.cliente}` : '') +
+      const prefixo = l.evento ? '⚠ ' : l.estado === 'concluido' ? '✓ ' : l.estado === 'a_decorrer' ? '▶ ' : '';
+      bar.textContent = prefixo + (l.estimado ? '≈ ' : '') + (l.evento || l.lote);
+      bar.title = (l.evento ? `${l.evento} (paragem da máquina)` : l.lote) + `\nMáquina: ${maquina}\nInício: ${dh(l.inicio)}${l.estimado ? ' (estimado)' : ''}\nFim previsto: ${dh(l.fim)}${l.estimado ? ' (estimado)' : ''}` +
+        (!l.evento && l.artigo ? `\nArtigo: ${l.artigo}` : '') + (!l.evento && l.cor ? `\nCor: ${l.cor}` : '') + (!l.evento && l.cliente ? `\nCliente: ${l.cliente}` : '') +
         `\nEstado: ${l.estado === 'concluido' ? 'concluído' : l.estado === 'a_decorrer' ? 'a decorrer agora' : 'agendado'}` +
-        (l.estimado ? '\n(este lote ainda não tem hora real no Orgatex — a duração é uma estimativa)' : '');
+        (l.estimado ? '\n(ainda não tem hora real no Orgatex — a duração é uma estimativa)' : '');
       tl.appendChild(bar);
     }
 
