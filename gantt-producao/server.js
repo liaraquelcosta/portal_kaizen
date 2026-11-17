@@ -17,7 +17,7 @@ const PASTA_DADOS = path.join(__dirname, 'data');
 const CACHE = path.join(PASTA_DADOS, 'gantt-orgatex.json');
 // sobe quando o formato do cache muda: força uma leitura imediata ao arrancar
 const VERSAO_DADOS = 13;
-// Base onde está a fila real das máquinas (MachineBatchQueue) — a principal do Orgatex.
+// Base onde está a fila real das máquinas (BatchIndex) — a principal do Orgatex.
 const BD_FILA = (process.env.ORGATEX_FILA_DB || 'ORGATEX').replace(/[\[\]]/g, '');
 const INTERVALO_MIN =Number(process.env.ORGATEX_GANTT_INTERVALO_MIN || 3);
 
@@ -206,18 +206,20 @@ async function ler(desde, ate) {
       `);
     // Ordem real da fila de cada máquina, tal como o operador a deixou no Orgatex (a QueueTime do lote
     // NÃO é a ordem: um lote movido para a frente da fila pode ter QueueTime mais recente que os outros).
-    // A fila só existe na base principal (ORGATEX, mesmo servidor) — na ORGATEX-INTEG a MachineBatchQueue
-    // está vazia. Se o utilizador não tiver permissão de leitura na ORGATEX, segue sem fila (ordena-se
-    // pela QueueTime, como antes).
+    // A fila só existe na base principal (ORGATEX, mesmo servidor), na tabela BatchIndex (position por
+    // machine_no; batch_ref_no = DyelotRefNo da ORGATEX-INTEG). A MachineBatchQueue está vazia. Se o
+    // utilizador não tiver permissão de leitura na ORGATEX, segue sem fila (ordena-se pela QueueTime).
     let fila = [];
     try {
       const filaR = await pool.request().query(`
-        SELECT Machine, Position, DyelotRefNo FROM [${BD_FILA}].dbo.MachineBatchQueue WITH (NOLOCK)
+        SELECT machine_no AS Machine, position AS Position, batch_ref_no AS DyelotRefNo
+        FROM [${BD_FILA}].dbo.BatchIndex WITH (NOLOCK)
+        WHERE position IS NOT NULL
       `);
       fila = filaR.recordset;
       estado.erroFila = null;
     } catch (e) {
-      if (estado.erroFila !== e.message) console.error(`[gantt-producao] sem acesso à fila (${BD_FILA}.dbo.MachineBatchQueue): ${e.message}`);
+      if (estado.erroFila !== e.message) console.error(`[gantt-producao] sem acesso à fila (${BD_FILA}.dbo.BatchIndex): ${e.message}`);
       estado.erroFila = e.message;
     }
     return { maquinas: maquinasR.recordset, lotes: lotesR.recordset, fila };
@@ -277,14 +279,15 @@ function avancarComFecho(inicioMs, duracaoMs) {
 }
 
 function montar({ maquinas, lotes, fila = [] }, agora) {
-  // posição de cada lote na fila do Orgatex (MachineBatchQueue), pela referência do lote
+  // posição de cada lote na fila do Orgatex (BatchIndex), pela referência do lote (sem zeros à esquerda)
+  const refNorm = (r) => String(r || '').trim().replace(/^0+(?=\d)/, '');
   const posicaoNaFila = new Map();
   for (const f of fila) {
-    const ref = String(f.DyelotRefNo || '').trim();
+    const ref = refNorm(f.DyelotRefNo);
     if (ref && f.Position != null) posicaoNaFila.set(ref, Number(f.Position));
   }
   const posicao = (l) => {
-    const p = posicaoNaFila.get(String(l.DyelotRefNo || '').trim());
+    const p = posicaoNaFila.get(refNorm(l.DyelotRefNo));
     return p == null ? Infinity : p;
   };
   // todas as máquinas da base (mesmo sem lote agendado agora) + qualquer uma que apareça nos lotes e não esteja lá
@@ -312,8 +315,8 @@ function montar({ maquinas, lotes, fila = [] }, agora) {
 
   // 1) lotes com hora real de início (terminados ou a decorrer); ficam já prontos.
   // 2) lotes sem hora de início (na fila, ainda nao arrancaram): por máquina, encadeiam-se uns a seguir
-  //    aos outros pela posição na fila do Orgatex (MachineBatchQueue.Position), a partir do fim do
-  //    último lote (real ou estimado) dessa máquina. Lotes que não estejam na MachineBatchQueue vão
+  //    aos outros pela posição na fila do Orgatex (BatchIndex.position), a partir do fim do
+  //    último lote (real ou estimado) dessa máquina. Lotes que não estejam na BatchIndex vão
   //    para o fim, pela ordem em que entraram na fila (QueueTime).
   const prontos = [];
   const emFilaPorMaquina = new Map();
