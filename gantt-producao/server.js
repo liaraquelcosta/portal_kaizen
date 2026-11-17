@@ -17,7 +17,9 @@ const PASTA_DADOS = path.join(__dirname, 'data');
 const CACHE = path.join(PASTA_DADOS, 'gantt-orgatex.json');
 // sobe quando o formato do cache muda: força uma leitura imediata ao arrancar
 const VERSAO_DADOS = 13;
-const INTERVALO_MIN = Number(process.env.ORGATEX_GANTT_INTERVALO_MIN || 3);
+// Base onde está a fila real das máquinas (MachineBatchQueue) — a principal do Orgatex.
+const BD_FILA = (process.env.ORGATEX_FILA_DB || 'ORGATEX').replace(/[\[\]]/g, '');
+const INTERVALO_MIN =Number(process.env.ORGATEX_GANTT_INTERVALO_MIN || 3);
 
 fs.mkdirSync(PASTA_DADOS, { recursive: true });
 
@@ -204,10 +206,21 @@ async function ler(desde, ate) {
       `);
     // Ordem real da fila de cada máquina, tal como o operador a deixou no Orgatex (a QueueTime do lote
     // NÃO é a ordem: um lote movido para a frente da fila pode ter QueueTime mais recente que os outros).
-    const filaR = await pool.request().query(`
-      SELECT Machine, Position, DyelotRefNo FROM MachineBatchQueue WITH (NOLOCK)
-    `);
-    return { maquinas: maquinasR.recordset, lotes: lotesR.recordset, fila: filaR.recordset };
+    // A fila só existe na base principal (ORGATEX, mesmo servidor) — na ORGATEX-INTEG a MachineBatchQueue
+    // está vazia. Se o utilizador não tiver permissão de leitura na ORGATEX, segue sem fila (ordena-se
+    // pela QueueTime, como antes).
+    let fila = [];
+    try {
+      const filaR = await pool.request().query(`
+        SELECT Machine, Position, DyelotRefNo FROM [${BD_FILA}].dbo.MachineBatchQueue WITH (NOLOCK)
+      `);
+      fila = filaR.recordset;
+      estado.erroFila = null;
+    } catch (e) {
+      if (estado.erroFila !== e.message) console.error(`[gantt-producao] sem acesso à fila (${BD_FILA}.dbo.MachineBatchQueue): ${e.message}`);
+      estado.erroFila = e.message;
+    }
+    return { maquinas: maquinasR.recordset, lotes: lotesR.recordset, fila };
   } finally {
     if (pool) pool.close().catch(() => {});
   }
@@ -440,7 +453,7 @@ app.get('/api/gantt-orgatex', (req, res) => {
         : 'A ligação ao Orgatex ainda não está configurada nesta máquina (ficheiro C:\\LabDataAppSecrets\\.env).',
     });
   }
-  res.json({ ...estado.dados, ligacao: { configurado: configurado(), ultimoErro: estado.ultimoErro, intervaloMin: INTERVALO_MIN } });
+  res.json({ ...estado.dados, ligacao: { configurado: configurado(), ultimoErro: estado.ultimoErro, intervaloMin: INTERVALO_MIN, erroFila: estado.erroFila || null } });
 });
 app.post('/api/gantt-orgatex/atualizar', async (req, res) => {
   try {
