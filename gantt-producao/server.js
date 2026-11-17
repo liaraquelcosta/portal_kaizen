@@ -16,7 +16,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const PASTA_DADOS = path.join(__dirname, 'data');
 const CACHE = path.join(PASTA_DADOS, 'gantt-orgatex.json');
 // sobe quando o formato do cache muda: força uma leitura imediata ao arrancar
-const VERSAO_DADOS = 12;
+const VERSAO_DADOS = 13;
 const INTERVALO_MIN = Number(process.env.ORGATEX_GANTT_INTERVALO_MIN || 3);
 
 fs.mkdirSync(PASTA_DADOS, { recursive: true });
@@ -202,7 +202,12 @@ async function ler(desde, ate) {
           AND (StartTime IS NOT NULL OR QueueTime >= @filaDesde)
         ORDER BY Machine, StartTime
       `);
-    return { maquinas: maquinasR.recordset, lotes: lotesR.recordset };
+    // Ordem real da fila de cada máquina, tal como o operador a deixou no Orgatex (a QueueTime do lote
+    // NÃO é a ordem: um lote movido para a frente da fila pode ter QueueTime mais recente que os outros).
+    const filaR = await pool.request().query(`
+      SELECT Machine, Position, DyelotRefNo FROM MachineBatchQueue WITH (NOLOCK)
+    `);
+    return { maquinas: maquinasR.recordset, lotes: lotesR.recordset, fila: filaR.recordset };
   } finally {
     if (pool) pool.close().catch(() => {});
   }
@@ -258,7 +263,17 @@ function avancarComFecho(inicioMs, duracaoMs) {
   return t;
 }
 
-function montar({ maquinas, lotes }, agora) {
+function montar({ maquinas, lotes, fila = [] }, agora) {
+  // posição de cada lote na fila do Orgatex (MachineBatchQueue), pela referência do lote
+  const posicaoNaFila = new Map();
+  for (const f of fila) {
+    const ref = String(f.DyelotRefNo || '').trim();
+    if (ref && f.Position != null) posicaoNaFila.set(ref, Number(f.Position));
+  }
+  const posicao = (l) => {
+    const p = posicaoNaFila.get(String(l.DyelotRefNo || '').trim());
+    return p == null ? Infinity : p;
+  };
   // todas as máquinas da base (mesmo sem lote agendado agora) + qualquer uma que apareça nos lotes e não esteja lá
   const nomes = new Set(maquinas.map((m) => (m.MachineNo || '').trim()).filter(Boolean));
   for (const l of lotes) if (l.Machine) nomes.add(l.Machine.trim());
@@ -284,8 +299,9 @@ function montar({ maquinas, lotes }, agora) {
 
   // 1) lotes com hora real de início (terminados ou a decorrer); ficam já prontos.
   // 2) lotes sem hora de início (na fila, ainda nao arrancaram): por máquina, encadeiam-se uns a seguir
-  //    aos outros (pela ordem em que entraram na fila — QueueTime), a partir do fim do último lote
-  //    (real ou estimado) dessa máquina.
+  //    aos outros pela posição na fila do Orgatex (MachineBatchQueue.Position), a partir do fim do
+  //    último lote (real ou estimado) dessa máquina. Lotes que não estejam na MachineBatchQueue vão
+  //    para o fim, pela ordem em que entraram na fila (QueueTime).
   const prontos = [];
   const emFilaPorMaquina = new Map();
   // Registos "a decorrer" (sem hora de fim) parados há dias no Orgatex são lixo de dados (nunca foram
@@ -352,7 +368,7 @@ function montar({ maquinas, lotes }, agora) {
   }
 
   for (const [maquina, lista] of emFilaPorMaquina) {
-    lista.sort((a, b) => (a.QueueTime ? new Date(a.QueueTime).getTime() : 0) - (b.QueueTime ? new Date(b.QueueTime).getTime() : 0) || String(a.Dyelot).localeCompare(String(b.Dyelot)));
+    lista.sort((a, b) => (posicao(a) - posicao(b) || 0) || (a.QueueTime ? new Date(a.QueueTime).getTime() : 0) - (b.QueueTime ? new Date(b.QueueTime).getTime() : 0) || String(a.Dyelot).localeCompare(String(b.Dyelot)));
     let cursor = inicioAjustado(Math.max(agora.getTime(), fimConhecidoPorMaquina.get(maquina) || agora.getTime()));
     for (const l of lista) {
       const duracaoMs = duracaoEstimadaS(maquina, l.SetTime) * 1000;
